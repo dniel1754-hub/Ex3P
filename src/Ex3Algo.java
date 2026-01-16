@@ -48,7 +48,7 @@ public class Ex3Algo implements PacManAlgo {
 		int code = 0;
 		int[][] board = game.getGame(code);
 
-		// 1. אתחול יסודי של המפה
+		// 1. אתחול יסודי של המפה והצבעים
 		if (_map == null) {
 			_map = new Map(board);
 			BLUE = Game.getIntColor(Color.BLUE, code);
@@ -56,26 +56,26 @@ public class Ex3Algo implements PacManAlgo {
 			GREEN = Game.getIntColor(Color.GREEN, code);
 		} else { _map.init(board); }
 
-		// וודא שהמפה מוגדרת כמחזורית לפי הגדרות המשחק
+		// הגדרת המפה כמחזורית
 		_map.setCyclic(true);
 
 		Pixel2D me = parsePos(game.getPos(code));
 		GhostCL[] ghosts = game.getGhosts(code);
 
-		// 2. חסימה חכמה של בית הרוחות (רק אם אנחנו לא בתוכו!)
+		// 2. חסימת בית הרוחות בעזרת drawRect (רק אם אנחנו מחוץ לבית)
 		applyGhostHouseBypass(board, me);
 
-		// 3. חישוב מרחקים - אם נכשל, נסה בלי החסימה של בית הרוחות
+		// 3. חישוב מרחקים מהפקמן
 		Map2D distFromMe = _map.allDistance(me, BLUE);
 		if (distFromMe == null) {
-			_map.init(board); // איפוס חסימות
+			_map.init(board); // איפוס זמני של חסימות אם הפקמן תקוע
 			distFromMe = _map.allDistance(me, BLUE);
 		}
 
 		// 4. בניית מפת סכנה מרוחות פעילות
 		double[][] dangerMap = buildDangerMap(ghosts);
 
-		// 5. בחירת המהלך הטוב ביותר מתוך 4 כיוונים
+		// 5. בחירת המהלך הטוב ביותר לפי מערכת הניקוד (Heuristic)
 		int bestDir = -1;
 		double bestScore = Double.NEGATIVE_INFINITY;
 
@@ -83,7 +83,6 @@ public class Ex3Algo implements PacManAlgo {
 			Pixel2D next = neighbor(me, dir);
 			if (!isLegal(next, board)) continue;
 
-			// הערכת המהלך: קרבה לאוכל, מרחק מסכנה, והמשכיות
 			double score = evaluate(next, board, distFromMe, dangerMap, dir);
 
 			if (score > bestScore) {
@@ -92,7 +91,7 @@ public class Ex3Algo implements PacManAlgo {
 			}
 		}
 
-		// 6. הגנה נגד קיפאון - אם לא נמצא מהלך חכם, זוז לכל מקום פנוי
+		// 6. הגנה נגד קיפאון
 		if (bestDir == -1) {
 			for (int d : new int[]{Game.RIGHT, Game.LEFT, Game.UP, Game.DOWN}) {
 				if (isLegal(neighbor(me, d), board)) return d;
@@ -102,72 +101,55 @@ public class Ex3Algo implements PacManAlgo {
 		_lastDir = bestDir;
 		return bestDir;
 	}
+
 	/**
-	 * פונקציה זו מגדירה את כל אזור בית הרוחות כמכשול (קיר).
-	 * היא מחשבת את מרכז הלוח וחוסמת רדיוס מסביבו.
+	 * חוסמת את בית הרוחות כמלבן 7x4 במרכז הלוח.
 	 */
 	private void applyGhostHouseBypass(int[][] board, Pixel2D pacmanPos) {
-		int midX = board.length / 2;
-		int midY = board[0].length / 2;
+		int midX = board.length / 2; //
+		int midY = board[0].length / 2; //
 
-		// הגדרת גבולות הריבוע המרכזי (ניתן לשנות את המספרים אם הבית גדול/קטן יותר)
-		int radiusX = 4;
-		int radiusY = 3;
+		// הגדרת פינות המלבן (רוחב 7, גובה 4)
+		Pixel2D p1 = new Index2D(midX - 3, midY - 2);
+		Pixel2D p2 = new Index2D(midX + 3, midY + 1);
 
-		for (int x = midX - radiusX; x <= midX + radiusX; x++) {
-			for (int y = midY - radiusY; y <= midY + radiusY; y++) {
-				Index2D p = new Index2D(x, y);
-
-				// הגנה: לא חוסמים את המשבצת אם הפקמן נמצא עליה כרגע (כדי לא לתקוע אותו)
-				if (_map.isInside(p) && !p.equals(pacmanPos)) {
-					_map.setPixel(x, y, BLUE);
-				}
-			}
+		// חסימה רק אם הפקמן לא נמצא בתוך המלבן (למניעת שגיאת null ב-BFS)
+		if (!isPacmanInsideHouse(pacmanPos, p1, p2)) {
+			_map.drawRect(p1, p2, BLUE); //
 		}
 	}
 
-	private Index2D parsePos(String pos) {
-		String[] p = pos.split(",");
-		return new Index2D(Integer.parseInt(p[0]), Integer.parseInt(p[1]));
+	/**
+	 * בודקת אם הפקמן נמצא בתוך גבולות מלבן בית הרוחות.
+	 */
+	private boolean isPacmanInsideHouse(Pixel2D p, Pixel2D p1, Pixel2D p2) {
+		int minX = Math.min(p1.getX(), p2.getX());
+		int maxX = Math.max(p1.getX(), p2.getX());
+		int minY = Math.min(p1.getY(), p2.getY());
+		int maxY = Math.max(p1.getY(), p2.getY());
+
+		return p.getX() >= minX && p.getX() <= maxX &&
+				p.getY() >= minY && p.getY() <= maxY;
 	}
 
 	private double evaluate(Pixel2D pos, int[][] board, Map2D dists, double[][] danger, int dir) {
 		double score = 0;
 		int x = pos.getX(), y = pos.getY();
 
-		// א. סכנה (עדיפות עליונה)
 		double dng = danger[x][y];
-		if (dng <= 1.1) return -1000000; // מוות
-		score += dng * 500; // ככל שיותר רחוק מהרוח, הציון עולה
+		if (dng <= 1.1) return -1000000;
+		score += dng * 500;
 
-		// ב. אוכל - מציאת הנקודה הוורודה הקרובה ביותר מהמיקום הבא
 		Pixel2D target = findClosest(board, PINK, dists);
 		if (target != null) {
 			double d = pos.distance2D(target);
 			score += 10000.0 / (d + 1);
 		}
 
-		// ג. בונוס על אכילה מיידית
 		if (board[x][y] == PINK) score += 2000;
-
-		// ד. מניעת "רעידות" - בונוס על המשך באותו כיוון
 		if (dir == _lastDir) score += 100;
 
 		return score;
-	}
-
-	private void applySmartBypass(int[][] board, Pixel2D me) {
-		int midX = board.length / 2;
-		int midY = board[0].length / 2;
-		for (int x = midX - 3; x <= midX + 3; x++) {
-			for (int y = midY - 2; y <= midY + 2; y++) {
-				Index2D p = new Index2D(x, y);
-				// חוסם רק אם אני לא עומד שם כרגע (כדי לא להקריס את ה-BFS)
-				if (_map.isInside(p) && !p.equals(me)) {
-					_map.setPixel(x, y, BLUE);
-				}
-			}
-		}
 	}
 
 	private double[][] buildDangerMap(GhostCL[] ghosts) {
@@ -176,7 +158,7 @@ public class Ex3Algo implements PacManAlgo {
 		for (double[] r : dMap) Arrays.fill(r, 99.0);
 
 		for (GhostCL g : ghosts) {
-			if (g.remainTimeAsEatable(0) > 1.5) continue; // התעלמות מרוחות כחולות
+			if (g.remainTimeAsEatable(0) > 1.5) continue;
 
 			Pixel2D gp = parsePos(g.getPos(0));
 			Map2D gDist = _map.allDistance(gp, BLUE);
@@ -197,9 +179,8 @@ public class Ex3Algo implements PacManAlgo {
 		if (dir == Game.UP) y++; else if (dir == Game.DOWN) y--;
 		else if (dir == Game.LEFT) x--; else if (dir == Game.RIGHT) x++;
 
-		// תמיכה בלוח מחזורי (Wrap-around)
 		int w = _map.getWidth(), h = _map.getHeight();
-		return new Index2D((x + w) % w, (y + h) % h);
+		return new Index2D((x + w) % w, (y + h) % h); // תמיכה במחזוריות
 	}
 
 	private boolean isLegal(Pixel2D p, int[][] board) {
@@ -221,4 +202,8 @@ public class Ex3Algo implements PacManAlgo {
 		return best;
 	}
 
+	private Index2D parsePos(String pos) {
+		String[] p = pos.split(",");
+		return new Index2D(Integer.parseInt(p[0]), Integer.parseInt(p[1]));
+	}
 }
