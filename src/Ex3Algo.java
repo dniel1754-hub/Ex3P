@@ -19,7 +19,7 @@ public class Ex3Algo implements PacManAlgo {
 	private Map2D _map = null;// לא מאתחלים עם null בבנאי
 	private int _lastDir = Game.UP;
 	private int BLUE, PINK, GREEN, GRAY;
-	private static final int DANGER_DIST = 7;
+	private static final int DANGER_RADIUS = 7;
 	private static final int GREEN_DIST = 4;
 	private static final int HUNT_BUFFER = 3;
 
@@ -48,41 +48,48 @@ public class Ex3Algo implements PacManAlgo {
 		int code = 0;
 		int[][] board = game.getGame(code);
 
-		// 1. אתחול יסודי של המפה והצבעים
-		if (_map == null) {
-			_map = new Map(board);
-			BLUE = Game.getIntColor(Color.BLUE, code);
-			PINK = Game.getIntColor(Color.PINK, code);
-			GREEN = Game.getIntColor(Color.GREEN, code);
-		} else { _map.init(board); }
+		// יצירת מפה נקייה בכל צעד כדי למנוע באגים של "לכלוך" המפה
+		Map map = new Map(board);
+		map.setCyclic(true); // עקרון מהדוגמה השנייה: תמיכה במחזוריות
 
-		// הגדרת המפה כמחזורית
-		_map.setCyclic(true);
+		BLUE = Game.getIntColor(Color.BLUE, code);
+		PINK = Game.getIntColor(Color.PINK, code);
+		GREEN = Game.getIntColor(Color.GREEN, code);
 
 		Pixel2D me = parsePos(game.getPos(code));
 		GhostCL[] ghosts = game.getGhosts(code);
 
-		// 2. חסימת בית הרוחות בעזרת drawRect (רק אם אנחנו מחוץ לבית)
-		applyGhostHouseBypass(board, me);
+		// 1. הגדרת גבולות בית הרוחות (7x4 במרכז)
+		int midX = board.length / 2;
+		int midY = board[0].length / 2;
+		Pixel2D houseP1 = new Index2D(midX - 3, midY - 2);
+		Pixel2D houseP2 = new Index2D(midX + 3, midY + 1);
 
-		// 3. חישוב מרחקים מהפקמן
-		Map2D distFromMe = _map.allDistance(me, BLUE);
-		if (distFromMe == null) {
-			_map.init(board); // איפוס זמני של חסימות אם הפקמן תקוע
-			distFromMe = _map.allDistance(me, BLUE);
-		}
+		// 2. חישוב מרחקים נקי (עקרון מהדוגמה הראשונה: תמיד עובד כי המפה לא חסומה)
+		Map2D distFromMe = map.allDistance(me, BLUE);
 
-		// 4. בניית מפת סכנה מרוחות פעילות
-		double[][] dangerMap = buildDangerMap(ghosts);
+		// 3. בניית מפת סכנה (רק מרוחות פעילות ומחוץ לבית)
+		double[][] dangerMap = buildDangerMap(map, board, ghosts, houseP1, houseP2);
 
-		// 5. בחירת המהלך הטוב ביותר לפי מערכת הניקוד (Heuristic)
+		// 4. לולאת קבלת החלטות (עקרון מהדוגמה השנייה: בדיקת כל הכיוונים)
 		int bestDir = -1;
 		double bestScore = Double.NEGATIVE_INFINITY;
 
 		for (int dir : new int[]{Game.UP, Game.DOWN, Game.LEFT, Game.RIGHT}) {
-			Pixel2D next = neighbor(me, dir);
-			if (!isLegal(next, board)) continue;
+			Pixel2D next = neighbor(me, dir, map); // שימוש בפונקציית neighbor מחזורית
 
+			// --- בדיקות חוקיות (החלק הקריטי למניעת תקיעה) ---
+
+			// א. האם זה קיר?
+			if (!map.isInside(next) || board[next.getX()][next.getY()] == BLUE) continue;
+
+			// ב. חסימת בית הרוחות (לוגית בלבד!)
+			// נכנסים רק אם אנחנו כבר בטעות בפנים וצריכים לצאת
+			if (isInsideRect(next, houseP1, houseP2) && !isInsideRect(me, houseP1, houseP2)) {
+				continue; // מדלגים על המהלך הזה - הוא מוביל לבית הרוחות
+			}
+
+			// ג. חישוב ניקוד
 			double score = evaluate(next, board, distFromMe, dangerMap, dir);
 
 			if (score > bestScore) {
@@ -91,11 +98,10 @@ public class Ex3Algo implements PacManAlgo {
 			}
 		}
 
-		// 6. הגנה נגד קיפאון
+		// 5. מנגנון אל-כשל (עקרון מהדוגמה הראשונה: validMove)
+		// אם הכל נכשל, פשוט זוז לכל משבצת פנויה כדי לא לקפוא
 		if (bestDir == -1) {
-			for (int d : new int[]{Game.RIGHT, Game.LEFT, Game.UP, Game.DOWN}) {
-				if (isLegal(neighbor(me, d), board)) return d;
-			}
+			return getAnyValidMove(me, map, board);
 		}
 
 		_lastDir = bestDir;
@@ -103,99 +109,107 @@ public class Ex3Algo implements PacManAlgo {
 	}
 
 	/**
-	 * חוסמת את בית הרוחות כמלבן 7x4 במרכז הלוח.
+	 * פונקציית הניקוד (שילוב של הדוגמאות):
+	 * - בריחה רק אם המרחק < 7.
+	 * - עדיפות לאוכל.
+	 * - בונוס יציבות.
 	 */
-	private void applyGhostHouseBypass(int[][] board, Pixel2D pacmanPos) {
-		int midX = board.length / 2; //
-		int midY = board[0].length / 2; //
-
-		// הגדרת פינות המלבן (רוחב 7, גובה 4)
-		Pixel2D p1 = new Index2D(midX - 3, midY - 2);
-		Pixel2D p2 = new Index2D(midX + 3, midY + 1);
-
-		// חסימה רק אם הפקמן לא נמצא בתוך המלבן (למניעת שגיאת null ב-BFS)
-		if (!isPacmanInsideHouse(pacmanPos, p1, p2)) {
-			_map.drawRect(p1, p2, BLUE); //
-		}
-	}
-
-	/**
-	 * בודקת אם הפקמן נמצא בתוך גבולות מלבן בית הרוחות.
-	 */
-	private boolean isPacmanInsideHouse(Pixel2D p, Pixel2D p1, Pixel2D p2) {
-		int minX = Math.min(p1.getX(), p2.getX());
-		int maxX = Math.max(p1.getX(), p2.getX());
-		int minY = Math.min(p1.getY(), p2.getY());
-		int maxY = Math.max(p1.getY(), p2.getY());
-
-		return p.getX() >= minX && p.getX() <= maxX &&
-				p.getY() >= minY && p.getY() <= maxY;
-	}
-
 	private double evaluate(Pixel2D pos, int[][] board, Map2D dists, double[][] danger, int dir) {
 		double score = 0;
 		int x = pos.getX(), y = pos.getY();
 
+		// סכנה: בריחה רק אם הרוח קרובה מ-7 צעדים
 		double dng = danger[x][y];
-		if (dng <= 1.1) return -1000000;
-		score += dng * 500;
-
-		Pixel2D target = findClosest(board, PINK, dists);
-		if (target != null) {
-			double d = pos.distance2D(target);
-			score += 10000.0 / (d + 1);
+		if (dng <= 1.1) return -10000000; // מוות ודאי
+		if (dng <= DANGER_RADIUS) {
+			// ככל שמתקרבים ל-0, העונש גדל משמעותית
+			score -= (DANGER_RADIUS - dng) * 100000;
 		}
 
+		// אוכל: התקרבות לנקודה ורודה (באמצעות BFS מהדוגמה השנייה)
+		if (dists != null) {
+			Pixel2D target = findClosest(board, PINK, dists);
+			if (target != null) {
+				// אומדן מרחק ליעד
+				double d = pos.distance2D(target);
+				score += 5000.0 / (d + 1);
+			}
+		}
+
+		// בונוסים מקומיים
 		if (board[x][y] == PINK) score += 2000;
-		if (dir == _lastDir) score += 100;
+		if (board[x][y] == GREEN) score += 500;
+		if (dir == _lastDir) score += 50; // מניעת רעידות
 
 		return score;
 	}
 
-	private double[][] buildDangerMap(GhostCL[] ghosts) {
-		int w = _map.getWidth(), h = _map.getHeight();
+	/**
+	 * בונה מפת סכנה. מתעלמת מרוחות בתוך הבית (כדי לעבור ליד הקירות בבטחה).
+	 */
+	private double[][] buildDangerMap(Map map, int[][] board, GhostCL[] ghosts, Pixel2D p1, Pixel2D p2) {
+		int w = board.length, h = board[0].length;
 		double[][] dMap = new double[w][h];
-		for (double[] r : dMap) Arrays.fill(r, 99.0);
+		for (double[] r : dMap) java.util.Arrays.fill(r, 99.0);
 
 		for (GhostCL g : ghosts) {
-			if (g.remainTimeAsEatable(0) > 1.5) continue;
-
 			Pixel2D gp = parsePos(g.getPos(0));
-			Map2D gDist = _map.allDistance(gp, BLUE);
+
+			// סינון רוחות (עקרון מהדוגמה הראשונה):
+			// 1. אם הרוח אכילה - לא בורחים.
+			// 2. אם הרוח בתוך הבית - לא בורחים (היא כלואה).
+			if (g.remainTimeAsEatable(0) > 1.0 || isInsideRect(gp, p1, p2)) continue;
+
+			// חישוב מרחק BFS אמיתי (דרך הקירות הפתוחים)
+			Map2D gDist = map.allDistance(gp, BLUE);
 			if (gDist == null) continue;
 
 			for (int x = 0; x < w; x++) {
 				for (int y = 0; y < h; y++) {
 					int d = gDist.getPixel(x, y);
-					if (d != -1) dMap[x][y] = Math.min(dMap[x][y], d);
+					if (d != -1) {
+						dMap[x][y] = Math.min(dMap[x][y], d);
+					}
 				}
 			}
 		}
 		return dMap;
 	}
 
-	private Pixel2D neighbor(Pixel2D p, int dir) {
+	// --- פונקציות עזר מהדוגמאות ---
+
+	private int getAnyValidMove(Pixel2D me, Map map, int[][] board) {
+		for (int d : new int[]{Game.UP, Game.RIGHT, Game.DOWN, Game.LEFT}) {
+			Pixel2D n = neighbor(me, d, map);
+			if (map.isInside(n) && board[n.getX()][n.getY()] != BLUE) return d;
+		}
+		return Game.UP;
+	}
+
+	private boolean isInsideRect(Pixel2D p, Pixel2D p1, Pixel2D p2) {
+		int minX = Math.min(p1.getX(), p2.getX());
+		int maxX = Math.max(p1.getX(), p2.getX());
+		int minY = Math.min(p1.getY(), p2.getY());
+		int maxY = Math.max(p1.getY(), p2.getY());
+		return p.getX() >= minX && p.getX() <= maxX && p.getY() >= minY && p.getY() <= maxY;
+	}
+
+	private Pixel2D neighbor(Pixel2D p, int dir, Map map) {
 		int x = p.getX(), y = p.getY();
 		if (dir == Game.UP) y++; else if (dir == Game.DOWN) y--;
 		else if (dir == Game.LEFT) x--; else if (dir == Game.RIGHT) x++;
-
-		int w = _map.getWidth(), h = _map.getHeight();
-		return new Index2D((x + w) % w, (y + h) % h); // תמיכה במחזוריות
-	}
-
-	private boolean isLegal(Pixel2D p, int[][] board) {
-		return _map.isInside(p) && board[p.getX()][p.getY()] != BLUE;
+		int w = map.getWidth(), h = map.getHeight();
+		return new Index2D((x + w) % w, (y + h) % h); // מחזוריות
 	}
 
 	private Pixel2D findClosest(int[][] board, int color, Map2D distMap) {
+		if (distMap == null) return null;
 		Pixel2D best = null; int minD = Integer.MAX_VALUE;
 		for (int x = 0; x < board.length; x++) {
 			for (int y = 0; y < board[0].length; y++) {
 				if (board[x][y] == color) {
 					int d = distMap.getPixel(x, y);
-					if (d != -1 && d < minD) {
-						minD = d; best = new Index2D(x, y);
-					}
+					if (d != -1 && d < minD) { minD = d; best = new Index2D(x, y); }
 				}
 			}
 		}
