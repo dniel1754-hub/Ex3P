@@ -41,6 +41,7 @@ public class Index2D implements Pixel2D {
         return var10000 + "," + this.getY();
     }
 
+
     public boolean equals(Object t) {
         boolean ans = false;
         if (t instanceof Pixel2D p) {

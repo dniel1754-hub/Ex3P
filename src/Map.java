@@ -78,12 +78,17 @@ public class Map implements Map2D {
 
 	public int getPixel(int x, int y) {
 		int ans = -1;
-		return x >= 0 && y >= 0 ? this.map[x][y] : ans;
+		if (x < 0 || y < 0)
+			return ans;
+		return this.map[x][y];
 	}
+
 
 	public int getPixel(Pixel2D p) {
 		int ans = -1;
-		return p.getX() >= 0 && p.getY() >= 0 ? this.getPixel(p.getX(), p.getY()) : ans;
+		if (p.getX() < 0 || p.getY() < 0)
+			return ans;
+		return getPixel(p.getX(), p.getY());
 	}
 
 	public void setPixel(int x, int y, int v) {
