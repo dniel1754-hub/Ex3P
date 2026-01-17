@@ -1,4 +1,5 @@
-//package assignments.Ex3;
+package Ex3P;//package assignments.Ex3;
+
 import java.util.LinkedList;
 import java.util.Queue;
 
@@ -99,26 +100,6 @@ public class Map implements Map2D {
 		this.setPixel(p.getX(), p.getY(), v);
 	}
 
-	// Draws and fills a rectangle on the map defined by two opposite corner pixels.
-	public void drawRect(Pixel2D p1, Pixel2D p2, int color) {
-		int x1 = p1.getX(); int x2 = p2.getX();
-		int y1 = p1.getY(); int y2 = p2.getY();
-		if (p1 == null || p2 == null)
-			throw new RuntimeException("Invalid array for init");
-		if (p1 == p2)
-			setPixel(p1, color);
-		else {
-			int minX = Math.min(x1, x2);
-			int maxX = Math.max(x1, x2);
-			int minY = Math.min(y1, y2);
-			int maxY = Math.max(y1, y2);
-			for (int i = minX; i <= maxX; i++) {
-				for (int j = minY; j <= maxY; j++) {
-					setPixel(i, j, color);
-				}
-			}
-		}
-	}
 
 	public Queue<Pixel2D> getNeighbers(Pixel2D p, boolean cyclic) {
 		Queue<Pixel2D> Neighbers = new LinkedList();

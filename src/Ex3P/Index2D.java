@@ -1,3 +1,5 @@
+package Ex3P;
+
 //package assignments.Ex3;
 public class Index2D implements Pixel2D {
     private int _x;

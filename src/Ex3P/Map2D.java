@@ -1,4 +1,4 @@
-//package assignments.Ex3;
+package Ex3P;//package assignments.Ex3;
 
 /**
  * This interface represents a 2D map as a raster matrix or maze.
@@ -82,14 +82,7 @@ public interface Map2D {
 	 * @return true iff p is with in this map.
 	 */
 	boolean isInside(Pixel2D p);
-	/**
-	 * This method draws a rectangle by changing all the pixels in this map
-	 * which are within the [p1,p2] range to color.
-	 * @param p1
-	 * @param p2
-	 * @param newColor - the (new) color to be used in the drawing.
-	 */
-	void drawRect(Pixel2D p1, Pixel2D p2, int newColor);
+
 
 	/**
 	 * @return true iff this map should be addressed as a cyclic one.

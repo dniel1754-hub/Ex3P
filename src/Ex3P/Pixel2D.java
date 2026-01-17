@@ -1,4 +1,4 @@
-//package assignments.Ex3;
+package Ex3P;//package assignments.Ex3;
 
 /**
  * This interface represents an integer based coordinate of a 2D raster (aka a 2D matrix).
