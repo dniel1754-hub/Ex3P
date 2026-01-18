@@ -1,0 +1,9 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="Ex3P:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/Ex3P_jar</output-path>
+    <root id="archive" name="Ex3P.jar">
+      <element id="module-output" name="Ex3P" />
+      <element id="library" level="project" name="Ex3_v09e.jar-out" />
+    </root>
+  </artifact>
+</component>
